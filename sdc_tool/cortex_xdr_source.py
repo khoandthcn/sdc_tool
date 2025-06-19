@@ -57,7 +57,12 @@ class CortexXDRSource(BaseSource):
                     reply = response.get("reply", {})
                     status = reply.get("status")
                     number_of_results = reply.get("number_of_results")
-                    logger.info(f"XQL query {query_id} status: {status}, results: {number_of_results}")
+                    
+                    if status in ["PENDING", "RUNNING"]:
+                        logger.info(f"XQL query {query_id} status: {status}")
+                    else:
+                        logger.info(f"XQL query {query_id} status: {status}, results: {number_of_results}")
+
                     if status == "SUCCESS":
                         break
 
@@ -92,20 +97,21 @@ class CortexXDRSource(BaseSource):
                 while status == "PENDING" or status == "RUNNING":
                     time.sleep(5) # Wait for 5 seconds before polling again
                     query_results_response = self.api_client.xql_api.get_query_results(query_id, limit=0)
-                    # Fix: Check for 'reply' key and then 'status' and 'number_of_results'
+                    
                     reply = query_results_response.get("reply", {})
                     status = reply.get("status")
                     number_of_results = reply.get("number_of_results")
 
-                    logger.info(f"XQL query {query_id} status: {status}, results: {number_of_results}")
+                    if status in ["PENDING", "RUNNING"]:
+                        logger.info(f"XQL query {query_id} status: {status}")
+                    else:
+                        logger.info(f"XQL query {query_id} status: {status}, results: {number_of_results}")
 
                     if status == "SUCCESS":
-                        # If status is SUCCESS, we can break the loop. number_of_results might still be None if no results.
                         break
                     elif status == "FAILED":
                         raise UnsuccessfulQueryStatusException(f"XQL query {query_id} failed.")
                     elif status not in ["PENDING", "RUNNING"]:
-                        # Handle unexpected statuses, but still proceed to try and collect data
                         logger.warning(f"Unexpected XQL query {query_id} status: {status}. Proceeding with collection.")
                         break
 
@@ -129,5 +135,7 @@ class CortexXDRSource(BaseSource):
         except Exception as e:
             logger.error(f"Error during Cortex XDR data collection: {e}")
             raise
+
+
 
 

@@ -46,8 +46,11 @@ cortex_xdr.api.xql_query_template_alerts = dataset = xdr_data | filter _time > \
         mock_client_instance.xql_api.start_xql_query.return_value = "dummy_query_id_123"
 
         # Mock get_query_results for status polling
-        # Simulate successful status with number_of_results
-        mock_client_instance.xql_api.get_query_results.return_value = {"reply": {"status": "SUCCESS", "number_of_results": 2}}
+        # Simulate PENDING status first, then SUCCESS
+        mock_client_instance.xql_api.get_query_results.side_effect = [
+            {"reply": {"status": "PENDING"}},
+            {"reply": {"status": "SUCCESS", "number_of_results": 2}}
+        ]
 
         # Simulate gzipped data that would be written by write_query_results
         simulated_data = [
@@ -73,8 +76,9 @@ cortex_xdr.api.xql_query_template_alerts = dataset = xdr_data | filter _time > \
         # Assert that start_xql_query was called
         mock_client_instance.xql_api.start_xql_query.assert_called_once()
 
-        # Assert that get_query_results was called for status polling
-        mock_client_instance.xql_api.get_query_results.assert_called_once_with("dummy_query_id_123", limit=0)
+        # Assert that get_query_results was called twice for status polling
+        self.assertEqual(mock_client_instance.xql_api.get_query_results.call_count, 2)
+        mock_client_instance.xql_api.get_query_results.assert_any_call("dummy_query_id_123", limit=0)
 
         # Assert that write_query_results was called
         expected_temp_file_path = f"/tmp/cortex_xdr_output_{os.getpid()}.json.gz"
