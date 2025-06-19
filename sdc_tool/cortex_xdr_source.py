@@ -45,36 +45,22 @@ class CortexXDRSource(BaseSource):
         query_id = self.api_client.xql_api.start_xql_query(query=query)
         logger.info(f"Started XQL query with ID: {query_id}")
 
-        # Poll for query status
-        status = "PENDING"
-        while status == "PENDING" or status == "RUNNING":
-            logger.info(f"Checking status for XQL query ID: {query_id}")
-            query_results_response = self.api_client.xql_api.get_query_results(query_id)
-            if not query_results_response:
-                logger.error(f"Failed to get status for query ID {query_id}.")
-                return None        
-            reply = query_results_response.get("reply", {})
-            status = reply.get("status")
-            logger.info(f"XQL query {query_id} status: {status}")
-            if status == "SUCCESS":
-                break
-            elif status == "FAILED":
-                logger.error(f"XQL query {query_id} failed.")
-                raise UnsuccessfulQueryStatusException(f"XQL query {query_id} failed.")
-            time.sleep(2)
-        logger.info(f"XQL query {query_id} completed successfully.")
-
-        temp_gz_file = f"{tmp_dir}/{prefix_filename}_{start_time}_{end_time}.json.gz"
-        logger.info(f"Writing XQL query results to temporary gzipped file: {temp_gz_file}")
+        max_wait_time = self.config.get("CortexXDR.cortex_xdr.api.max_wait_time", 300)
+        waited_time = 0
         
-        bytes_written = self.api_client.xql_api.write_query_results(query_id, temp_gz_file)
-        logger.info(f"Successfully wrote {bytes_written} bytes to {temp_gz_file}")
-
-        if bytes_written and os.path.isfile(temp_gz_file):
-            return temp_gz_file
-        else:
-            logger.error(f"No data was written to file {temp_gz_file}.")
-            return None
+        temp_gz_file = f"{tmp_dir}/{prefix_filename}_{start_time}_{end_time}.json.gz"
+        # Poll for query status
+        while waited_time < max_wait_time:
+            try:
+                bytes_written = self.api_client.xql_api.write_query_results(query_id, temp_gz_file)
+                logger.info(f"Successfully wrote {bytes_written} bytes to {temp_gz_file}")
+                return temp_gz_file
+            except Exception:
+                logger.info(f"XQL query {query_id} is still running, waiting...")
+                time.sleep(2)
+                waited_time += 2
+        logger.error(f"Query {query_id} did not complete within {max_wait_time} seconds.")
+        raise UnsuccessfulQueryStatusException(f"Query {query_id} did not complete in time.")
 
 
 
