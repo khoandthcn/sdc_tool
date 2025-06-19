@@ -120,7 +120,7 @@ class SecurityDataCollector:
         start_time = datetime.fromtimestamp(start_time_ms / 1000)
         now = datetime.now()
 
-        interval_sec = interval_minutes * 60
+        interval_sec = int(interval_minutes * 60)
         now_ts = int(now.timestamp())
 
         # Tìm mốc trước hiện tại chia hết cho interval (loại bỏ block hiện tại nếu chưa đủ)
