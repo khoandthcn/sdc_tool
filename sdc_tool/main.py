@@ -112,7 +112,7 @@ class SecurityDataCollector:
             json.dump(state, f, indent=4)
         logger.info(f"Saved last collection time ({timestamp}) for pipeline {pipeline_key} to {self.state_file_path}")
 
-    def _split_time_windows(start_time_ms: int, interval_minutes: int) -> List[Tuple[int, int]]:
+    def _split_time_windows(self, start_time_ms: int, interval_minutes: int) -> List[Tuple[int, int]]:
         """
         Chia khoảng thời gian thành các block interval từ start_time đến mốc gần nhất trước hiện tại.
         
