@@ -163,7 +163,9 @@ class SecurityDataCollector:
         # Break down the collection into smaller blocks if the total time is too large
         # This logic needs to be refined based on actual requirements for chunking
         # For now, let's assume a single chunk for demonstration
+        logger.info(f"Building time blocks for collection from {last_collected_time} to {current_time} with interval {collection_window_minutes} minutes.")
         time_blocks = self._split_time_windows(int(last_collected_time.timestamp() * 1000), collection_window_minutes)
+        logger.info(f"Time blocks for collection: {time_blocks}")
         
         # Example: Collect data in 1-hour chunks
         # The actual chunking logic should be based on 'chu kỳ đồng bộ' and 'giới hạn ngưỡng số event tối đa'
