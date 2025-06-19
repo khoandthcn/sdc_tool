@@ -1,0 +1,17 @@
+README.md
+setup.py
+sdc_tool/__init__.py
+sdc_tool/base_sink.py
+sdc_tool/base_source.py
+sdc_tool/config_parser.py
+sdc_tool/cortex_xdr_source.py
+sdc_tool/hdfs_sink.py
+sdc_tool/local_file_sink.py
+sdc_tool/main.py
+sdc_tool/qradar_source.py
+security_data_collector.egg-info/PKG-INFO
+security_data_collector.egg-info/SOURCES.txt
+security_data_collector.egg-info/dependency_links.txt
+security_data_collector.egg-info/entry_points.txt
+security_data_collector.egg-info/requires.txt
+security_data_collector.egg-info/top_level.txt
