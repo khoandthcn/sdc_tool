@@ -219,3 +219,10 @@ sdc_tool/
 
 
 
+
+
+
+## Cortex XDR Enhancements
+
+This tool now includes enhanced integration with Cortex XDR, leveraging the `cortex-xdr-client` PyPI library for direct gzipped stream retrieval and improved XQL API polling.
+
