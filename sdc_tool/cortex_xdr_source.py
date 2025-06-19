@@ -48,6 +48,7 @@ class CortexXDRSource(BaseSource):
         # Poll for query status
         status = "PENDING"
         while status == "PENDING" or status == "RUNNING":
+            logger.info(f"Checking status for XQL query ID: {query_id}")
             query_results_response = self.api_client.xql_api.get_query_results(query_id)
             if not query_results_response:
                 logger.error(f"Failed to get status for query ID {query_id}.")
