@@ -42,41 +42,36 @@ class CortexXDRSource(BaseSource):
         # Get tmp directory for gzipped output
         tmp_dir = self.config.get("CortexXDR.cortex_xdr.tmp_dir", "./tmp/xdr")
         prefix_filename = self.config.get("CortexXDR.cortex_xdr.prefix_filename", "xdr_data")
-        try:
-            # Real API calls
-            query_id = self.api_client.xql_api.start_xql_query(query=query)
-            logger.info(f"Started XQL query with ID: {query_id}")
+        # Real API calls
+        query_id = self.api_client.xql_api.start_xql_query(query=query)
+        logger.info(f"Started XQL query with ID: {query_id}")
 
-            # Poll for query status
-            status = "PENDING"
-            while status == "PENDING" or status == "RUNNING":
-                time.sleep(5)
-                query_results_response = self.api_client.xql_api.get_query_results(query_id, limit=0)
-                
-                reply = query_results_response.get("reply", {})
-                status = reply.get("status")
-                logger.info(f"XQL query {query_id} status: {status}")
-                if status == "SUCCESS":
-                    break
-                elif status == "FAILED":
-                    logger.error(f"XQL query {query_id} failed.")
-                    raise UnsuccessfulQueryStatusException(f"XQL query {query_id} failed.")
-            logger.info(f"XQL query {query_id} completed successfully.")
-
-            temp_gz_file = f"{tmp_dir}/{prefix_filename}_{start_time}_{end_time}.json.gz"
-            logger.info(f"Writing XQL query results to temporary gzipped file: {temp_gz_file}")
+        # Poll for query status
+        status = "PENDING"
+        while status == "PENDING" or status == "RUNNING":
+            time.sleep(5)
+            query_results_response = self.api_client.xql_api.get_query_results(query_id, limit=0)
             
-            bytes_written = self.api_client.xql_api.write_query_results(query_id, temp_gz_file)
-            logger.info(f"Successfully wrote {bytes_written} bytes to {temp_gz_file}")
+            reply = query_results_response.get("reply", {})
+            status = reply.get("status")
+            logger.info(f"XQL query {query_id} status: {status}")
+            if status == "SUCCESS":
+                break
+            elif status == "FAILED":
+                logger.error(f"XQL query {query_id} failed.")
+                raise UnsuccessfulQueryStatusException(f"XQL query {query_id} failed.")
+        logger.info(f"XQL query {query_id} completed successfully.")
 
-            if bytes_written and os.path.isfile(temp_gz_file):
-                return temp_gz_file
-            else:
-                logger.error(f"No data was written to file {temp_gz_file}.")
-                return None
+        temp_gz_file = f"{tmp_dir}/{prefix_filename}_{start_time}_{end_time}.json.gz"
+        logger.info(f"Writing XQL query results to temporary gzipped file: {temp_gz_file}")
+        
+        bytes_written = self.api_client.xql_api.write_query_results(query_id, temp_gz_file)
+        logger.info(f"Successfully wrote {bytes_written} bytes to {temp_gz_file}")
 
-        except Exception as e:
-            logger.error(f"Error during Cortex XDR data collection: {e}")
+        if bytes_written and os.path.isfile(temp_gz_file):
+            return temp_gz_file
+        else:
+            logger.error(f"No data was written to file {temp_gz_file}.")
             return None
 
 
