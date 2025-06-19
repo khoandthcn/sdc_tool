@@ -33,11 +33,10 @@ class CortexXDRSource(BaseSource):
         self.api_client = CortexXDRClient(self.fqdn, self.key_id, self.key)
 
     def collect_data(self, start_time: datetime, end_time: datetime):
-        logger.info(f"Collecting data from Cortex XDR from {start_time} to {end_time}")
         query_template = self.config.get("CortexXDR.cortex_xdr.api.xql_query_template_alerts")
         query = query_template.format(start_time=start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
                                     end_time=end_time.strftime("%Y-%m-%dT%H:%M:%SZ"))
-        logger.debug(f"Executing XQL query: {query}")
+        logger.info(f"Collecting data from Cortex XDR from {start_time} to {end_time}: {query}")
 
         # Get tmp directory for gzipped output
         tmp_dir = self.config.get("CortexXDR.cortex_xdr.tmp_dir", "./tmp/xdr")
@@ -49,9 +48,10 @@ class CortexXDRSource(BaseSource):
         # Poll for query status
         status = "PENDING"
         while status == "PENDING" or status == "RUNNING":
-            time.sleep(5)
-            query_results_response = self.api_client.xql_api.get_query_results(query_id, limit=0)
-            
+            query_results_response = self.api_client.xql_api.get_query_results(query_id)
+            if not query_results_response:
+                logger.error(f"Failed to get status for query ID {query_id}.")
+                return None        
             reply = query_results_response.get("reply", {})
             status = reply.get("status")
             logger.info(f"XQL query {query_id} status: {status}")
@@ -60,6 +60,7 @@ class CortexXDRSource(BaseSource):
             elif status == "FAILED":
                 logger.error(f"XQL query {query_id} failed.")
                 raise UnsuccessfulQueryStatusException(f"XQL query {query_id} failed.")
+            time.sleep(2)
         logger.info(f"XQL query {query_id} completed successfully.")
 
         temp_gz_file = f"{tmp_dir}/{prefix_filename}_{start_time}_{end_time}.json.gz"
