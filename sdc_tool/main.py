@@ -115,25 +115,26 @@ class SecurityDataCollector:
     def _split_time_windows(self, start_time_ms: int, interval_minutes: int) -> List[Tuple[int, int]]:
         """
         Chia khoảng thời gian thành các block interval từ start_time đến mốc gần nhất trước hiện tại.
-        
-        :param start_time_ms: Thời điểm bắt đầu (milisecond)
-        :param interval_minutes: Độ dài mỗi block (phút)
-        :return: Danh sách các cặp (start, end) dạng milisecond
         """
         # Convert input time
         start_time = datetime.fromtimestamp(start_time_ms / 1000)
         now = datetime.now()
-        
-        # Xác định mốc gần nhất so với interval
+
         interval_sec = interval_minutes * 60
         now_ts = int(now.timestamp())
+
+        # Tìm mốc trước hiện tại chia hết cho interval (loại bỏ block hiện tại nếu chưa đủ)
         last_mark_ts = (now_ts // interval_sec) * interval_sec
+        # Nếu now chính xác là mốc chia (ví dụ 10:15:00) thì last_mark_ts = now_ts
+        # => thực chất bạn chỉ muốn lấy tới mốc gần nhất **trước** hiện tại (không lấy block hiện tại nếu chưa đủ)
+        if now_ts % interval_sec == 0:
+            last_mark_ts = now_ts - interval_sec
         last_mark = datetime.fromtimestamp(last_mark_ts)
-        
-        # Nếu start_time > last_mark thì trả về rỗng
+
+        # Nếu start_time >= last_mark, không có block nào hợp lệ
         if start_time >= last_mark:
             return []
-        
+
         result = []
         cur_start = start_time
         while cur_start < last_mark:
@@ -146,6 +147,7 @@ class SecurityDataCollector:
             ))
             cur_start = cur_end
         return result
+
 
     def run(self):
         logger.info(f"Starting Security Data Collector for pipeline: {self.source_identifier} > {self.sink_identifier}")
