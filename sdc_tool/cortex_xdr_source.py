@@ -34,8 +34,8 @@ class CortexXDRSource(BaseSource):
 
     def collect_data(self, start_time: datetime, end_time: datetime):
         query_template = self.config.get("CortexXDR.cortex_xdr.api.xql_query_template_alerts")
-        query = query_template.format(start_time=start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                    end_time=end_time.strftime("%Y-%m-%dT%H:%M:%SZ"))
+        query = query_template.format(start_time=start_time.timestamp*1000,  # Convert to milliseconds
+                                      end_time=end_time.timestamp*1000)  # Convert to milliseconds
         logger.info(f"Collecting data from Cortex XDR from {start_time} to {end_time}: {query}")
 
         # Get tmp directory for gzipped output
