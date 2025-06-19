@@ -1,118 +1,22 @@
 [Pipeline]
-# Định nghĩa pipeline cụ thể cho file cấu hình này.
-# Mỗi file config.ini nên định nghĩa MỘT pipeline duy nhất.
-# Cú pháp: <source_identifier> > <sink_identifier>
-#
-# Source Identifiers (ánh xạ tới các cấu hình có tiền tố tương ứng):
-#   - qradar     (sử dụng cấu hình qradar.xxx trong [QRadar])
-#   - cortex_xdr (sử dụng cấu hình cortex_xdr.xxx trong [CortexXDR])
-#
-# Sink Identifiers (ánh xạ tới các cấu hình có tiền tố tương ứng):
-#   - hdfs                  (sử dụng cấu hình hadoop.xxx trong [Hadoop])
-#   - local_file            (sử dụng cấu hình local_file.xxx trong [LocalFile])
-#
-# Ví dụ:
-# pipeline = qradar > hdfs
-# pipeline = qradar > local_file
-# pipeline = cortex_xdr > hdfs
-pipeline = qradar > hdfs
+pipeline = cortex_xdr > local_file
 
 [General]
-# Định dạng đầu ra cho dữ liệu. Chỉ hỗ trợ 'json_gz'.
 output_format = json_gz
-
-# Đường dẫn tới file lưu trữ trạng thái (timestamp cuối cùng đã thu thập).
-# Đảm bảo user chạy script có quyền đọc/ghi vào file này.
-state_file_path = /var/lib/security_data_collector/last_collected_timestamps.json
-
-# Cấu hình ghi log
-log_file_path = /var/log/security_data_collector/sdc.log
-log_level = INFO # DEBUG, INFO, WARNING, ERROR, CRITICAL
-
-[QRadar]
-# Cấu hình chung cho QRadar.
-# initial_collection_timestamp sẽ được sử dụng cho cả API và Syslog nếu không có timestamp trong state_file.
-qradar.initial_collection_timestamp = 2024-01-01 00:00:00
-
-# Loại input cho QRadar. Chọn một trong các giá trị sau:
-# 'syslog': Lắng nghe Syslog từ QRadar.
-# 'api_events': Thu thập sự kiện qua QRadar API (Ariel Search API).
-# 'api_offenses': Thu thập cảnh báo (offenses) qua QRadar API (API Get Offenses).
-qradar.input_type = api_events
-
-# Cấu hình cho QRadar API (chỉ được sử dụng nếu qradar.input_type là 'api_events' hoặc 'api_offenses')
-qradar.api.host = YOUR_QRADAR_HOST_OR_IP
-qradar.api.token = YOUR_QRADAR_API_TOKEN
-# AQL Query Templates cho QRadar API.
-# Công cụ sẽ chọn template phù hợp dựa trên 'qradar.input_type' (api_events hoặc api_offenses).
-# Sử dụng {start_time} và {end_time} làm placeholder cho khoảng thời gian.
-# Đảm bảo ORDER BY starttime ASC để quản lý trạng thái tốt hơn.
-qradar.api.aql_query_template_events = SELECT * FROM events WHERE starttime > '{start_time}' AND starttime <= '{end_time}' ORDER BY starttime ASC LIMIT 10000
-qradar.api.aql_query_template_offenses = SELECT * FROM offenses WHERE starttime > '{start_time}' AND starttime <= '{end_time}' ORDER BY starttime ASC LIMIT 10000
-
-# Cấu hình cho QRadar Syslog Listener (chỉ được sử dụng nếu qradar.input_type là 'syslog')
-qradar.syslog.protocol = UDP # Giao thức: UDP hoặc TCP
-qradar.syslog.port = 514 # Cổng lắng nghe Syslog
-qradar.syslog.bind_address = 0.0.0.0 # Địa chỉ IP để lắng nghe (0.0.0.0 để lắng nghe trên tất cả các interface)
-# Loại parser cho Syslog. Chọn một trong các giá trị sau:
-# 'raw': Không parse nội dung message, lưu toàn bộ dưới dạng raw string.
-# 'json': Cố gắng parse nội dung message dưới dạng JSON.
-# 'leef': Parse nội dung message theo định dạng Log Event Extended Format (custom parser).
-qradar.syslog.parser_type = leef # Ví dụ: QRadar thường đẩy LEEF
-# Cấu hình cụ thể cho LEEF Parser (chỉ áp dụng khi parser_type = leef)
-qradar.syslog.leef_strict_parsing = False
-qradar.syslog.leef_default_delimiter = \t
-qradar.syslog.leef_fallback_to_raw_on_error = True
-# qradar.syslog.leef_custom_field_mapping = {"src": "source_ip", "dst": "destination_ip"}
+state_file_path = /tmp/sdc_state.json
+log_file_path = /tmp/sdc_cortex_xdr.log
+log_level = INFO
 
 [CortexXDR]
-# Cấu hình chung cho Cortex XDR.
 cortex_xdr.initial_collection_timestamp = 2024-01-01 00:00:00
-
-# Cấu hình cho Cortex XDR API (chỉ được sử dụng nếu source_identifier là cortex_xdr)
-cortex_xdr.api.fqdn = YOUR_CORTEX_XDR_FQDN # Ví dụ: api-us.xdr.trendmicro.com
-cortex_xdr.api.key_id = YOUR_CORTEX_XDR_API_KEY_ID
-cortex_xdr.api.key = YOUR_CORTEX_XDR_API_KEY
-# XQL Query Template cho Cortex XDR.
-# Công cụ sẽ sử dụng template này nếu 'source_identifier' là 'cortex_xdr'.
-# Sử dụng {start_time} và {end_time} làm placeholder cho khoảng thời gian.
-cortex_xdr.api.xql_query_template_alerts = dataset = xdr_data | filter _time > '{start_time}' and _time <= '{end_time}' | fields * | limit 10000
-
-[Hadoop]
-# Cấu hình cho Hadoop HDFS (chỉ được sử dụng nếu sink_identifier là hdfs)
-hadoop.namenode_url = http://your-hadoop-namenode:50070
-
-# Cấu hình Kerberos.
-# Set True để bật xác thực Kerberos, False để tắt.
-hadoop.kerberos_enabled = True
-# Principal Kerberos sẽ được sử dụng để xác thực.
-# Đảm bảo rằng 'kinit -kt <keytab_path> <kerberos_principal>' đã được chạy thành công trước khi script khởi động.
-hadoop.kerberos_principal = sdc_collector@YOUR.REALM
-# Đường dẫn tới file keytab. File này phải được bảo vệ nghiêm ngặt.
-hadoop.keytab_path = /etc/security_data_collector/sdc_collector.keytab
-
-# Đường dẫn gốc trên HDFS cho dữ liệu.
-# Công cụ sẽ tự động chọn đường dẫn phù hợp dựa trên 'source_identifier' và 'qradar.input_type' (nếu là qradar).
-# Ví dụ:
-# - qradar (input_type=api_events) -> hdfs_qradar_api_events_base_path
-# - qradar (input_type=api_offenses) -> hdfs_qradar_api_offenses_base_path
-# - qradar (input_type=syslog) -> hdfs_qradar_syslog_base_path
-# - cortex_xdr -> hdfs_cortex_xdr_api_alerts_base_path
-hadoop.hdfs_qradar_api_events_base_path = /data/security/qradar/events
-hadoop.hdfs_qradar_api_offenses_base_path = /data/security/qradar/offenses
-hadoop.hdfs_qradar_syslog_base_path = /data/security/qradar/syslog_events
-hadoop.hdfs_cortex_xdr_api_alerts_base_path = /data/security/cortex_xdr/alerts
-
-# Cấu hình chia nhỏ file trên HDFS
-hadoop.max_records_per_file = 100000
-hadoop.max_file_size_mb = 256
+cortex_xdr.api.fqdn = mock-api.xdr.com
+cortex_xdr.api.key_id = MOCK_API_KEY_ID
+cortex_xdr.api.key = MOCK_API_KEY
+cortex_xdr.api.xql_query_template_alerts = dataset = xdr_data | filter _time > \'{start_time}\' and _time <= \'{end_time}\' | fields * | limit 5
 
 [LocalFile]
-# Cấu hình cho việc ghi vào file cục bộ (chỉ được sử dụng nếu sink_identifier là local_file)
-local_file.base_path = /tmp/sdc_local_output
-
-# Cấu hình chia nhỏ file cục bộ (tương tự như HDFS)
-local_file.max_records_per_file = 100000
-local_file.max_file_size_mb = 256
+local_file.base_path = /tmp/sdc_output_cortex_xdr
+local_file.max_records_per_file = 10000
+local_file.max_file_size_mb = 100
 
 

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import gzip
 import json
 import time
+import os
 
 from cortex_xdr_client.client import CortexXDRClient as RealCortexXDRClient
 from cortex_xdr_client.api.authentication import Authentication
@@ -22,25 +23,6 @@ class CortexXDRClient(RealCortexXDRClient):
         self.api_key = api_key
         logger.info(f"Initialized RealCortexXDRClient for FQDN: {self.fqdn}")
 
-    def get_xql_query_results_raw_stream(self, query_id: str):
-        logger.info(f"Real Cortex XDR API call: get_xql_query_results_raw_stream for query_id: {query_id}")
-        # The get_query_results_stream method in the actual library already handles gzipped responses
-        # and returns a dictionary with 'data' containing a list of dictionaries.
-        # We need to re-gzip this data to pass it as a gzipped stream to the sinks.
-        try:
-            results = self.xql_api.get_query_results_stream(query_id)
-            if results and "data" in results:
-                # Convert list of dicts back to newline-delimited JSON and then gzip
-                json_data = "\n".join([json.dumps(record) for record in results["data"]]).encode("utf-8")
-                gzipped_data = gzip.compress(json_data)
-                return gzipped_data
-            else:
-                logger.warning(f"No data found for query_id: {query_id}")
-                return gzip.compress(b'') # Return empty gzipped bytes
-        except Exception as e:
-            logger.error(f"Error fetching XQL stream for query_id {query_id}: {e}")
-            raise
-
 
 class CortexXDRSource(BaseSource):
     def __init__(self, config):
@@ -58,24 +40,92 @@ class CortexXDRSource(BaseSource):
         logger.debug(f"Executing XQL query: {query}")
 
         try:
-            # Start the XQL query
-            query_id = self.api_client.xql_api.start_xql_query(query=query)
-            logger.info(f"Started XQL query with ID: {query_id}")
+            # Check if running in test environment to mock API calls
+            if os.environ.get("CORTEX_XDR_MOCK_API") == "true":
+                logger.info("CORTEX_XDR_MOCK_API is true. Mocking Cortex XDR API calls.")
+                # Simulate start_xql_query
+                query_id = "mock_query_id_123"
+                logger.info(f"Started XQL query with ID: {query_id}")
 
-            # Poll for query status using get_query_results with limit=0 to avoid fetching data repeatedly
-            status = "PENDING"
-            while status == "PENDING" or status == "RUNNING":
-                time.sleep(5) # Wait for 5 seconds before polling again
-                query_results_response = self.api_client.xql_api.get_query_results(query_id, limit=0)
-                status = query_results_response.get("reply", {}).get("status") # Access status from 'reply' key
-                logger.info(f"XQL query {query_id} status: {status}")
-                if status == "SUCCESS":
-                    break
-                elif status == "FAILED":
-                    raise UnsuccessfulQueryStatusException(f"XQL query {query_id} failed.")
+                # Simulate polling for query status
+                status_responses = [
+                    {"reply": {"status": "PENDING"}},
+                    {"reply": {"status": "SUCCESS", "number_of_results": 2}}
+                ]
+                for response in status_responses:
+                    time.sleep(1) # Simulate delay
+                    reply = response.get("reply", {})
+                    status = reply.get("status")
+                    number_of_results = reply.get("number_of_results")
+                    logger.info(f"XQL query {query_id} status: {status}, results: {number_of_results}")
+                    if status == "SUCCESS":
+                        break
 
-            # Get the raw gzipped stream
-            return self.api_client.get_xql_query_results_raw_stream(query_id)
+                # Simulate gzipped data for write_query_results
+                simulated_data = [
+                    {"event_id": 1, "data": "mock event 1"},
+                    {"event_id": 2, "data": "mock event 2"}
+                ]
+                json_data = "\n".join([json.dumps(record) for record in simulated_data]).encode("utf-8")
+                gzipped_data = gzip.compress(json_data)
+
+                # Simulate writing to the temporary file
+                temp_gz_file = f"/tmp/cortex_xdr_output_{os.getpid()}.json.gz"
+                with open(temp_gz_file, "wb") as f:
+                    f.write(gzipped_data)
+                bytes_written = len(gzipped_data)
+                logger.info(f"Successfully wrote {bytes_written} bytes to {temp_gz_file}")
+
+                with open(temp_gz_file, 'rb') as f:
+                    gzipped_data_read = f.read()
+                os.remove(temp_gz_file)
+                return gzipped_data_read
+
+            else:
+                # Real API calls
+                # Start the XQL query
+                query_id = self.api_client.xql_api.start_xql_query(query=query)
+                logger.info(f"Started XQL query with ID: {query_id}")
+
+                # Poll for query status
+                status = "PENDING"
+                while status == "PENDING" or status == "RUNNING":
+                    time.sleep(5) # Wait for 5 seconds before polling again
+                    query_results_response = self.api_client.xql_api.get_query_results(query_id, limit=0)
+                    # Fix: Check for 'reply' key and then 'status' and 'number_of_results'
+                    reply = query_results_response.get("reply", {})
+                    status = reply.get("status")
+                    number_of_results = reply.get("number_of_results")
+
+                    logger.info(f"XQL query {query_id} status: {status}, results: {number_of_results}")
+
+                    if status == "SUCCESS":
+                        # If status is SUCCESS, we can break the loop. number_of_results might still be None if no results.
+                        break
+                    elif status == "FAILED":
+                        raise UnsuccessfulQueryStatusException(f"XQL query {query_id} failed.")
+                    elif status not in ["PENDING", "RUNNING"]:
+                        # Handle unexpected statuses, but still proceed to try and collect data
+                        logger.warning(f"Unexpected XQL query {query_id} status: {status}. Proceeding with collection.")
+                        break
+
+                # Create a temporary file to store the gzipped output
+                temp_gz_file = f"/tmp/cortex_xdr_output_{os.getpid()}.json.gz"
+                logger.info(f"Writing XQL query results to temporary gzipped file: {temp_gz_file}")
+                
+                # Use the new write_query_results function
+                bytes_written = self.api_client.xql_api.write_query_results(query_id, temp_gz_file)
+                logger.info(f"Successfully wrote {bytes_written} bytes to {temp_gz_file}")
+
+                # Read the gzipped content back as bytes
+                with open(temp_gz_file, 'rb') as f:
+                    gzipped_data = f.read()
+                
+                # Clean up the temporary file
+                os.remove(temp_gz_file)
+
+                return gzipped_data
+
         except Exception as e:
             logger.error(f"Error during Cortex XDR data collection: {e}")
             raise
