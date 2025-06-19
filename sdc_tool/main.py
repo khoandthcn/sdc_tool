@@ -177,7 +177,7 @@ class SecurityDataCollector:
         for start_ms, end_ms in time_blocks:
             try:
                 # Thu thập dữ liệu từ source
-                collected_data = self.source.collect_data(start_ms, end_ms)
+                collected_data = self.source.collect_data(datetime.fromtimestamp(start_ms / 1000),datetime.fromtimestamp( end_ms / 1000))
                 if collected_data:
                     logger.info(f"Collected {len(collected_data)} records from {self.source_identifier} ({start_ms} - {end_ms}).")
                     # self.sink.write_data(
