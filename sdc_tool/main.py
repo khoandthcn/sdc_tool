@@ -120,7 +120,7 @@ class SecurityDataCollector:
         start_time = datetime.fromtimestamp(start_time_ms / 1000)
         now = datetime.now()
 
-        interval_sec = int(interval_minutes * 60)
+        interval_sec = interval_minutes * 60
         now_ts = int(now.timestamp())
 
         # Tìm mốc trước hiện tại chia hết cho interval (loại bỏ block hiện tại nếu chưa đủ)
@@ -166,7 +166,7 @@ class SecurityDataCollector:
         # This logic needs to be refined based on actual requirements for chunking
         # For now, let's assume a single chunk for demonstration
         logger.info(f"Building time blocks for collection from {last_collected_time} to {current_time} with interval {collection_window_minutes} minutes.")
-        time_blocks = self._split_time_windows(int(last_collected_time.timestamp() * 1000), collection_window_minutes)
+        time_blocks = self._split_time_windows(int(last_collected_time.timestamp() * 1000), int(collection_window_minutes))
         logger.info(f"Time blocks for collection: {time_blocks}")
         
         # Example: Collect data in 1-hour chunks
