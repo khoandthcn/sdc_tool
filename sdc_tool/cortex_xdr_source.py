@@ -36,105 +36,49 @@ class CortexXDRSource(BaseSource):
         logger.info(f"Collecting data from Cortex XDR from {start_time} to {end_time}")
         query_template = self.config.get("CortexXDR.cortex_xdr.api.xql_query_template_alerts")
         query = query_template.format(start_time=start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                      end_time=end_time.strftime("%Y-%m-%dT%H:%M:%SZ"))
+                                    end_time=end_time.strftime("%Y-%m-%dT%H:%M:%SZ"))
         logger.debug(f"Executing XQL query: {query}")
 
+        # Get tmp directory for gzipped output
+        tmp_dir = self.config.get("CortexXDR.cortex_xdr.tmp_dir", "./tmp/xdr")
+        prefix_filename = self.config.get("CortexXDR.cortex_xdr.prefix_filename", "xdr_data")
         try:
-            # Check if running in test environment to mock API calls
-            if os.environ.get("CORTEX_XDR_MOCK_API") == "true":
-                logger.info("CORTEX_XDR_MOCK_API is true. Mocking Cortex XDR API calls.")
-                # Simulate start_xql_query
-                query_id = "mock_query_id_123"
-                logger.info(f"Started XQL query with ID: {query_id}")
+            # Real API calls
+            query_id = self.api_client.xql_api.start_xql_query(query=query)
+            logger.info(f"Started XQL query with ID: {query_id}")
 
-                # Simulate polling for query status
-                status_responses = [
-                    {"reply": {"status": "PENDING"}},
-                    {"reply": {"status": "SUCCESS", "number_of_results": 2}}
-                ]
-                for response in status_responses:
-                    time.sleep(1) # Simulate delay
-                    reply = response.get("reply", {})
-                    status = reply.get("status")
-                    number_of_results = reply.get("number_of_results")
-                    
-                    if status in ["PENDING", "RUNNING"]:
-                        logger.info(f"XQL query {query_id} status: {status}")
-                    else:
-                        logger.info(f"XQL query {query_id} status: {status}, results: {number_of_results}")
+            # Poll for query status
+            status = "PENDING"
+            while status == "PENDING" or status == "RUNNING":
+                time.sleep(5)
+                query_results_response = self.api_client.xql_api.get_query_results(query_id, limit=0)
+                
+                reply = query_results_response.get("reply", {})
+                status = reply.get("status")
+                logger.info(f"XQL query {query_id} status: {status}")
+                if status == "SUCCESS":
+                    break
+                elif status == "FAILED":
+                    logger.error(f"XQL query {query_id} failed.")
+                    raise UnsuccessfulQueryStatusException(f"XQL query {query_id} failed.")
+            logger.info(f"XQL query {query_id} completed successfully.")
 
-                    if status == "SUCCESS":
-                        break
+            temp_gz_file = f"{tmp_dir}/{prefix_filename}_{start_time}_{end_time}.json.gz"
+            logger.info(f"Writing XQL query results to temporary gzipped file: {temp_gz_file}")
+            
+            bytes_written = self.api_client.xql_api.write_query_results(query_id, temp_gz_file)
+            logger.info(f"Successfully wrote {bytes_written} bytes to {temp_gz_file}")
 
-                # Simulate gzipped data for write_query_results
-                simulated_data = [
-                    {"event_id": 1, "data": "mock event 1"},
-                    {"event_id": 2, "data": "mock event 2"}
-                ]
-                json_data = "\n".join([json.dumps(record) for record in simulated_data]).encode("utf-8")
-                gzipped_data = gzip.compress(json_data)
-
-                # Simulate writing to the temporary file
-                temp_gz_file = f"/tmp/cortex_xdr_output_{os.getpid()}.json.gz"
-                with open(temp_gz_file, "wb") as f:
-                    f.write(gzipped_data)
-                bytes_written = len(gzipped_data)
-                logger.info(f"Successfully wrote {bytes_written} bytes to {temp_gz_file}")
-
-                with open(temp_gz_file, 'rb') as f:
-                    gzipped_data_read = f.read()
-                os.remove(temp_gz_file)
-                return gzipped_data_read
-
+            if bytes_written and os.path.isfile(temp_gz_file):
+                return temp_gz_file
             else:
-                # Real API calls
-                # Start the XQL query
-                query_id = self.api_client.xql_api.start_xql_query(query=query)
-                logger.info(f"Started XQL query with ID: {query_id}")
-
-                # Poll for query status
-                status = "PENDING"
-                while status == "PENDING" or status == "RUNNING":
-                    time.sleep(5) # Wait for 5 seconds before polling again
-                    query_results_response = self.api_client.xql_api.get_query_results(query_id, limit=0)
-                    
-                    reply = query_results_response.get("reply", {})
-                    status = reply.get("status")
-                    number_of_results = reply.get("number_of_results")
-
-                    if status in ["PENDING", "RUNNING"]:
-                        logger.info(f"XQL query {query_id} status: {status}")
-                    else:
-                        logger.info(f"XQL query {query_id} status: {status}, results: {number_of_results}")
-
-                    if status == "SUCCESS":
-                        break
-                    elif status == "FAILED":
-                        raise UnsuccessfulQueryStatusException(f"XQL query {query_id} failed.")
-                    elif status not in ["PENDING", "RUNNING"]:
-                        logger.warning(f"Unexpected XQL query {query_id} status: {status}. Proceeding with collection.")
-                        break
-
-                # Create a temporary file to store the gzipped output
-                temp_gz_file = f"/tmp/cortex_xdr_output_{os.getpid()}.json.gz"
-                logger.info(f"Writing XQL query results to temporary gzipped file: {temp_gz_file}")
-                
-                # Use the new write_query_results function
-                bytes_written = self.api_client.xql_api.write_query_results(query_id, temp_gz_file)
-                logger.info(f"Successfully wrote {bytes_written} bytes to {temp_gz_file}")
-
-                # Read the gzipped content back as bytes
-                with open(temp_gz_file, 'rb') as f:
-                    gzipped_data = f.read()
-                
-                # Clean up the temporary file
-                os.remove(temp_gz_file)
-
-                return gzipped_data
+                logger.error(f"No data was written to file {temp_gz_file}.")
+                return None
 
         except Exception as e:
             logger.error(f"Error during Cortex XDR data collection: {e}")
-            raise
+            return None
+
 
 
 

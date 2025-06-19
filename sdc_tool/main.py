@@ -4,6 +4,8 @@ import os
 import time
 import json
 from datetime import datetime, timedelta
+from typing import List, Tuple
+from datetime import datetime, timedelta
 
 from sdc_tool.config_parser import ConfigParser
 from sdc_tool.qradar_source import QRadarSource
@@ -110,6 +112,41 @@ class SecurityDataCollector:
             json.dump(state, f, indent=4)
         logger.info(f"Saved last collection time ({timestamp}) for pipeline {pipeline_key} to {self.state_file_path}")
 
+    def _split_time_windows(start_time_ms: int, interval_minutes: int) -> List[Tuple[int, int]]:
+        """
+        Chia khoảng thời gian thành các block interval từ start_time đến mốc gần nhất trước hiện tại.
+        
+        :param start_time_ms: Thời điểm bắt đầu (milisecond)
+        :param interval_minutes: Độ dài mỗi block (phút)
+        :return: Danh sách các cặp (start, end) dạng milisecond
+        """
+        # Convert input time
+        start_time = datetime.fromtimestamp(start_time_ms / 1000)
+        now = datetime.now()
+        
+        # Xác định mốc gần nhất so với interval
+        interval_sec = interval_minutes * 60
+        now_ts = int(now.timestamp())
+        last_mark_ts = (now_ts // interval_sec) * interval_sec
+        last_mark = datetime.fromtimestamp(last_mark_ts)
+        
+        # Nếu start_time > last_mark thì trả về rỗng
+        if start_time >= last_mark:
+            return []
+        
+        result = []
+        cur_start = start_time
+        while cur_start < last_mark:
+            cur_end = cur_start + timedelta(minutes=interval_minutes)
+            if cur_end > last_mark:
+                cur_end = last_mark
+            result.append((
+                int(cur_start.timestamp() * 1000),
+                int(cur_end.timestamp() * 1000)
+            ))
+            cur_start = cur_end
+        return result
+
     def run(self):
         logger.info(f"Starting Security Data Collector for pipeline: {self.source_identifier} > {self.sink_identifier}")
         
@@ -121,15 +158,35 @@ class SecurityDataCollector:
         current_time = datetime.now()
         
         # Define a collection window (e.g., 1 hour)
-        collection_window_seconds = 3600 # 1 hour
+        collection_window_minutes = self.config.get("General.collection_window_minutes", 10) # 1 hour
         
         # Break down the collection into smaller blocks if the total time is too large
         # This logic needs to be refined based on actual requirements for chunking
         # For now, let's assume a single chunk for demonstration
+        time_blocks = self._split_time_windows(int(last_collected_time.timestamp() * 1000), collection_window_minutes)
         
         # Example: Collect data in 1-hour chunks
         # The actual chunking logic should be based on 'chu kỳ đồng bộ' and 'giới hạn ngưỡng số event tối đa'
         # as described in the requirements.
+        # Lấy thời gian bắt đầu (ms)
+
+        for start_ms, end_ms in time_blocks:
+            try:
+                # Thu thập dữ liệu từ source
+                collected_data = self.source.collect_data(start_ms, end_ms)
+                if collected_data:
+                    logger.info(f"Collected {len(collected_data)} records from {self.source_identifier} ({start_ms} - {end_ms}).")
+                    # self.sink.write_data(
+                    #     collected_data,
+                    #     self.source_identifier,
+                    #     getattr(self.source, "input_type", "default")
+                    # )
+                    self._save_last_collection_time(end_ms)
+                else:
+                    logger.info(f"No new data collected from {self.source_identifier} for block {start_ms} - {end_ms}.")
+            except Exception as e:
+                logger.error(f"Error during data collection or sinking for block {start_ms} - {end_ms}: {e}")
+
         
         # For this iteration, we'll just collect one chunk from last_collected_time to current_time
         # In a real application, this would be a loop processing time blocks.
@@ -165,16 +222,16 @@ class SecurityDataCollector:
         # For now, let's assume a simple one-time collection from last_collected_time to now.
         # The actual chunking and thresholding will be more complex and depend on the API limits.
 
-        try:
-            collected_data = self.source.collect_data(last_collected_time, current_time)
-            if collected_data:
-                logger.info(f"Collected {len(collected_data)} records from {self.source_identifier}.")
-                self.sink.write_data(collected_data, self.source_identifier, self.source.input_type if hasattr(self.source, 'input_type') else 'default')
-                self._save_last_collection_time(current_time)
-            else:
-                logger.info(f"No new data collected from {self.source_identifier}.")
-        except Exception as e:
-            logger.error(f"Error during data collection or sinking: {e}")
+        # try:
+        #     collected_data = self.source.collect_data(last_collected_time, current_time)
+        #     if collected_data:
+        #         logger.info(f"Collected {len(collected_data)} records from {self.source_identifier}.")
+        #         self.sink.write_data(collected_data, self.source_identifier, self.source.input_type if hasattr(self.source, 'input_type') else 'default')
+        #         self._save_last_collection_time(current_time)
+        #     else:
+        #         logger.info(f"No new data collected from {self.source_identifier}.")
+        # except Exception as e:
+        #     logger.error(f"Error during data collection or sinking: {e}")
 
 def main():
     import argparse

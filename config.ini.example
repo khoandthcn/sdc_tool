@@ -6,6 +6,9 @@ output_format = json_gz
 state_file_path = /tmp/sdc_state.json
 log_file_path = /tmp/sdc_cortex_xdr.log
 log_level = INFO
+collection_window_minutes = 10
+tmp_dir = ./tmp/xdr
+prefix_filename = xdr_data
 
 [CortexXDR]
 cortex_xdr.initial_collection_timestamp = 2024-01-01 00:00:00
@@ -13,6 +16,8 @@ cortex_xdr.api.fqdn = mock-api.xdr.com
 cortex_xdr.api.key_id = MOCK_API_KEY_ID
 cortex_xdr.api.key = MOCK_API_KEY
 cortex_xdr.api.xql_query_template_alerts = dataset = xdr_data | filter _time > \'{start_time}\' and _time <= \'{end_time}\' | fields * | limit 5
+cortex_xdr.tmp_dir = ./tmp/xdr
+cortex_xdr.prefix_filename = xdr_data
 
 [LocalFile]
 local_file.base_path = /tmp/sdc_output_cortex_xdr
